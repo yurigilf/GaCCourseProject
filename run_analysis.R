@@ -2,10 +2,8 @@
 
 install.packages("tidyr")
 install.packages("dplyr")
-install.packages("stringr")
 library(tidyr)
 library(dplyr)
-library(stringr)
 
 ## Download, unzip file and set working directory
 
@@ -16,129 +14,64 @@ setwd("unziped/UCI HAR Dataset")
 
 ## read txt 
 
-ac_labels <- tbl_df(read.delim("activity_labels.txt",header = FALSE))
+ac_labels <- read.table("activity_labels.txt",header = FALSE)
+features <- read.table("features.txt", header = FALSE)
 
-train_labels <- tbl_df(read.delim("train/y_train.txt",header = FALSE)) 
-train_sets <- tbl_df(read.delim("train/x_train.txt",header = FALSE))
-train_subjects <- tbl_df(read.delim("train/subject_train.txt" ,header = FALSE))
+train_labels <- read.table("train/y_train.txt",header = FALSE)
+train_sets <- read.table("train/x_train.txt",header = FALSE)
+train_subjects <- read.table("train/subject_train.txt" ,header = FALSE)
 
-test_labels <- tbl_df(read.delim("test/y_test.txt",header = FALSE))
-test_sets <- tbl_df(read.delim("test/x_test.txt",header = FALSE))
-test_subjects <- tbl_df(read.delim("test/subject_test.txt" , header = FALSE))
+test_labels <- read.table("test/y_test.txt",header = FALSE)
+test_sets <- read.table("test/x_test.txt",header = FALSE)
+test_subjects <- read.table("test/subject_test.txt" , header = FALSE)
 
-#separate activity_labels 
 
-ac_labels <- separate(ac_labels,V1,c("ActivityLabel","Activity"), sep = "\ ")
-
-##transform the data sets to a list of matrices  
-#train sets
-
-train_sets <- sapply(train_sets,str_squish)
-train_sets <- sapply(train_sets, str_trim)
-train_sets <- strsplit(train_sets," ")
-aux <- list()
-contador <- length(train_sets)
-
-for (i in 1:contador){
-    aux[i]<-list(sapply(train_sets[i],as.numeric))
-}
-
-train_sets <-aux
-
-#test sets
-
-test_sets <- sapply(test_sets,str_squish)
-test_sets <- sapply(test_sets,str_trim)
-test_sets <- strsplit(test_sets," ")
-aux <- list()
-contador <- length(test_sets)
-
-for (i in 1:contador){
-    aux[i]<-list(sapply(test_sets[i],as.numeric))
-    
-}
-test_sets <- aux
-
-rm(aux)
-
-#rename the columns on test and train labels
+#rename the columns 
 
 colnames(train_labels) <- "ActivityLabel"
 colnames(test_labels) <- "ActivityLabel"
 
-#rename the columns on test and train subjects
+colnames(train_subjects) <- "SubjectId"
+colnames(test_subjects) <- "SubjectId"
 
+colnames(train_sets) <- features[,2]
+colnames(test_sets) <- features[,2]
 
-colnames(train_subjects) <- "Subject"
-colnames(test_subjects) <- "Subject"
+colnames(ac_labels) <- c('ActivityLabel','Activity')
 
-#merge the ac_labels with the test and train labels
+#merge the ac_labels with the test and train labels for more descriptive name
 
 train_labeled <- merge(ac_labels,train_labels)
 test_labeled <- merge(ac_labels,test_labels)
 
-rm(train_labels,test_labels,ac_labels)
+#merge all into a single data set
 
-# Add the Subject column 
+train_all <- cbind(train_labeled,train_subjects,train_sets)
+test_all <- cbind(test_labeled,test_subjects,test_sets)
+all <- rbind(train_all,test_all)
 
-train_labeled<- cbind(train_labeled,train_subjects)
-test_labeled <- cbind(test_labeled,test_subjects)
+#Extracting only mean and standard deviation
 
-rm(train_subjects,test_subjects)
+colNames <- colnames (all)
+MeanStd <-  (grepl("Activity" , colNames) | 
+                                grepl("SubjectId" , colNames) | 
+                                grepl("mean.." , colNames) | 
+                                grepl("std.." , colNames) 
+            )
 
+setMeanStd <- all[,MeanStd == TRUE]
 
-# Remove the ActivityLabel column add The Test_Train Column
-# Add the Set, Mean, StdDev, Measurementes variables, reaarange the variables order
+##Remove ActivityId 
 
-train_data <- train_labeled %>% select(-(ActivityLabel)) %>%  select(Subject,Activity)
-train_data <- mutate(train_data,Set = "Train" , Mean =  NA, StdDev = NA)
+setMeanStd <- select(setMeanStd,-(ActivityLabel))
 
-test_data <- test_labeled %>% select(-(ActivityLabel)) %>% select(Subject,Activity)
-test_data <- mutate(test_data,Set = "Test", Mean =  NA, StdDev = NA)
+##Creating a second tidy data
 
-rm(train_labeled,test_labeled)
+tidyset <- setMeanStd %>% group_by(SubjectId,Activity) %>% summarise_all(funs(mean))
 
-#add the mean and standard deivation of the sets' measurement to the dataset
+tidyset <- tidyset [order(tidyset$SubjectId,tidyset$Activity)]
 
-contador <- length(train_sets)
+##Create txt file
 
-for (i in 1:contador){
-    train_data[i,4] <- mean(train_sets[[i]])
-    train_data[i,5] <- sd(train_sets[[i]])
-    
-}
-
-contador <- length(test_sets)
-
-for (i in 1:contador){
-    test_data[i,4] <- mean(test_sets[[i]])
-    test_data[i,5] <- sd(test_sets[[i]])
-    
-}
-
-rm(contador,i,train_sets,test_sets)
-
-#Create a single data set with both sets
-
-all_data <- rbind(train_data,test_data)
-
-rm(train_data,test_data)
-
-
-
-#Create the tidy data set
-
-by_Activity <- aggregate(all_data[,4:5],list(all_data$Activity),mean)
-
-by_subject <- aggregate(all_data[,4:5],list(all_data$Subject),mean)
-
-tidy_data <- rbind(by_Activity,by_subject)
-
-rm(by_Activity,by_subject)
-
-#Save as .txt file
-
-write.table(tidy_data, file = "tidydata.txt",row.names =  FALSE)
-
-
+write.table(tidyset, "tidyset.txt", row.name=FALSE)
 
